@@ -105,7 +105,7 @@ class VGGNet(pl.LightningModule):
 
 
     def configure_optimizers(self):
-        optimizer = optim.SGD(self.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
+        optimizer = optim.SGD(self.parameters(), lr=0.01, momentum=0.9, weight_decay=5e-4)
         lr_scheduler = ReduceLROnPlateau(optimizer, factor=0.1, patience=5)
 
         return {'optimizer': optimizer, 'lr_scheduler': lr_scheduler, 'monitor': 'val_loss'}
