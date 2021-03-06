@@ -16,8 +16,8 @@ def main():
     model = VGGNet(num_classes=10)
 
     # create data loader
-    train_loader = create_dataloader('CIFAR10', './dataset/cifar10', split='train', batch_size=256)
-    val_loader = create_dataloader('CIFAR10', './dataset/cifar10', split='val', batch_size=256, shuffle=False)
+    train_loader = create_dataloader('CIFAR10', './dataset/cifar10', split='train', batch_size=128)
+    val_loader = create_dataloader('CIFAR10', './dataset/cifar10', split='val', batch_size=128, shuffle=False)
 
     # create the trainer
     trainer = Trainer(

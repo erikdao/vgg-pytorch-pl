@@ -70,26 +70,29 @@ class VGGNet(pl.LightningModule):
         ]))
 
         self.classifiers = nn.Sequential(OrderedDict([
-            ('fc1', nn.Linear(in_features=512 * 8 * 8, out_features=2048)),
+            ('fc1', nn.Linear(in_features=512 * 8 * 8, out_features=4096)),
             ('relu6', nn.ReLU(inplace=True)),
             ('dropout1', nn.Dropout()),
-            ('fc2', nn.Linear(in_features=2048, out_features=2048)),
+            ('fc2', nn.Linear(in_features=4096, out_features=4096)),
             ('relu7', nn.ReLU(inplace=True)),
             ('dropout2', nn.Dropout()),
-            ('fc3', nn.Linear(in_features=2048, out_features=kwargs['num_classes'])),
+            ('fc3', nn.Linear(in_features=4096, out_features=kwargs['num_classes'])),
         ]))
-    
+
         self.train_accuracy = pl.metrics.Accuracy()
         self.val_accuracy = pl.metrics.Accuracy()
-        
+
         self._init_weights()
-    
+
     def _init_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.xavier_uniform_(m.weight)
                 if m.bias is not None:
-                    m.bias.data.fill_(0.0) 
+                    m.bias.data.fill_(0.0)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1.0)
+                nn.init.constant_(m.bias, 0.0)
             elif isinstance(m, nn.Linear):
                 nn.init.normal_(m.weight, mean=0., std=0.01)
                 if m.bias is not None:
@@ -100,20 +103,21 @@ class VGGNet(pl.LightningModule):
         hid = hid.view(hid.shape[0], -1)
         return self.classifiers(hid)
 
+
     def configure_optimizers(self):
-        optimizer = optim.SGD(self.parameters(), lr=0.01, momentum=0.9, weight_decay=5e-4)
-        lr_scheduler = ReduceLROnPlateau(optimizer, factor=0.1, patience=3)
+        optimizer = optim.SGD(self.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
+        lr_scheduler = ReduceLROnPlateau(optimizer, factor=0.1, patience=5)
 
         return {'optimizer': optimizer, 'lr_scheduler': lr_scheduler, 'monitor': 'val_loss'}
-    
+
     def training_step(self, train_batch, train_id):
         inputs, labels = train_batch
         pred = self.forward(inputs)
-        loss = F.cross_entropy(pred, labels) 
+        loss = F.cross_entropy(pred, labels)
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
         self.train_accuracy(F.softmax(pred, dim=-1), labels)
         self.log('train_acc', self.train_accuracy, on_step=True, on_epoch=False)
-        return loss 
+        return loss
 
     def training_epoch_end(self, outs):
         self.log('train_acc_epoch', self.train_accuracy.compute())
@@ -125,4 +129,4 @@ class VGGNet(pl.LightningModule):
         self.log('val_loss', loss, on_epoch=True, prog_bar=True)
         self.val_accuracy(F.softmax(pred, dim=-1), labels)
         self.log('val_acc_epoch', self.val_accuracy, on_step=True, on_epoch=True)
-        return loss 
+        return loss
