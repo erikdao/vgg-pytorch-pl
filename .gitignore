@@ -73,6 +73,7 @@ MNIST*
 
 # Pytorch Lightning checkpoints and logs
 lightning_logs
+logs/
 
 # dataset folder
 dataset/*

@@ -3,6 +3,7 @@ Main entry to the program: training/inference
 """
 import pytorch_lightning as pl
 from pytorch_lightning.trainer import Trainer
+from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 from models import VGGNet
@@ -21,8 +22,11 @@ def main():
 
     # create the trainer
     trainer = Trainer(
-        max_epochs=1000, gpus=1, auto_select_gpus=True,
-        callbacks=[EarlyStopping(monitor='val_loss', patience=10)]
+        max_epochs=100, gpus=1, auto_select_gpus=True,
+        callbacks=[
+            LearningRateMonitor(logging_interval='step'),
+            EarlyStopping(monitor='val_loss', patience=15)
+        ],
     )
     trainer.fit(model, train_loader, val_loader)
 

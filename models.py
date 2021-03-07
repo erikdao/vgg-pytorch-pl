@@ -1,7 +1,11 @@
 """
 Model definitions
 """
+import os
+from datetime import datetime
 from collections import OrderedDict
+
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -10,6 +14,13 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 import pytorch_lightning as pl
+from pytorch_lightning.trainer.states import RunningStage
+
+def write_log(fpath, **kwargs):
+    with open(fpath, 'a') as f:
+        f.write(f"{kwargs.get('epoch')},{kwargs.get('lr')}," \
+                f"{kwargs.get('train_loss')},{kwargs.get('train_acc')},"
+                f"{kwargs.get('val_loss')},{kwargs.get('val_acc')}\n")
 
 
 class VGGNet(pl.LightningModule):
@@ -83,6 +94,13 @@ class VGGNet(pl.LightningModule):
         self.val_accuracy = pl.metrics.Accuracy()
 
         self._init_weights()
+        self._init_manual_logs()
+
+        # Dictionary to hold training_loss by epochs
+        self.train_epoch_loss = dict()
+        self.train_epoch_acc = dict()
+        self.val_epoch_loss = dict()
+        self.val_epoch_acc = dict()
 
     def _init_weights(self):
         for m in self.modules():
@@ -97,6 +115,20 @@ class VGGNet(pl.LightningModule):
                 nn.init.normal_(m.weight, mean=0., std=0.01)
                 if m.bias is not None:
                     m.bias.data.fill_(0.0)
+
+    def _init_manual_logs(self):
+        """
+        Setup manual logging to CSV file for further usage
+        """
+        cur_dir = os.path.dirname(os.path.abspath(__file__))
+        logs_dir = os.path.join(cur_dir, 'logs')
+        if not os.path.exists(logs_dir):
+            os.makedirs(logs_dir)
+
+        cur_time = datetime.now().strftime('%Y%m%d_%H%M')
+        self.csv_log_path = os.path.join(logs_dir, f'{cur_time}_logs.csv')
+        with open(self.csv_log_path, 'w') as f:
+            f.write("epoch,lr,train_loss,train_acc,val_loss,val_acc\n")
 
     def forward(self, x):
         hid = self.features(x)
@@ -120,6 +152,14 @@ class VGGNet(pl.LightningModule):
         return loss
 
     def training_epoch_end(self, outs):
+        # Calculate average training loss
+        np_loss = [out['loss'].cpu().detach().numpy() for out in outs]
+        avg_loss = np.mean(np_loss)
+        self.train_epoch_loss[self.trainer.current_epoch] = avg_loss
+
+        # Train accuracy average for this epoch
+        train_acc = self.train_accuracy.compute()
+        self.train_epoch_acc[self.trainer.current_epoch] = train_acc.cpu().detach().numpy()
         self.log('train_acc_epoch', self.train_accuracy.compute())
 
     def validation_step(self, val_batch, val_id):
@@ -129,4 +169,36 @@ class VGGNet(pl.LightningModule):
         self.log('val_loss', loss, on_epoch=True, prog_bar=True)
         self.val_accuracy(F.softmax(pred, dim=-1), labels)
         self.log('val_acc_epoch', self.val_accuracy, on_step=True, on_epoch=True)
+
         return loss
+
+    def validation_epoch_end(self, outs):
+        np_loss = [out.cpu().detach().numpy() for out in outs]
+        avg_loss = np.mean(np_loss)
+        self.val_epoch_loss[self.trainer.current_epoch] = avg_loss
+
+        # Train accuracy average for this epoch
+        val_acc = self.train_accuracy.compute()
+        self.val_epoch_acc[self.trainer.current_epoch] = val_acc.cpu().detach().numpy()
+
+        # We only want to log on real training loop, not during vanity check
+        # CAUTION: This API is constantly changing with Pytorch Lightning update
+        if not self.trainer.running_sanity_check:
+            write_log(
+                self.csv_log_path,
+                epoch=self.trainer.current_epoch,
+                lr=self._get_current_lr(),
+                train_loss=self.train_epoch_loss[self.trainer.current_epoch],
+                train_acc=self.train_epoch_acc[self.trainer.current_epoch],
+                val_loss=self.val_epoch_loss[self.trainer.current_epoch],
+                val_acc=self.val_epoch_acc[self.trainer.current_epoch]
+            )
+
+    def _get_current_lr(self):
+        """
+        Get current learning rate from the optimizer, asssuming that we
+        are using only one optimizer and learning rate scheduler
+        """
+        scheduler = self.trainer.lr_schedulers[0]['scheduler']
+        return scheduler.optimizer.param_groups[0]['lr']
+
