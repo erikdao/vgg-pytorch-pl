@@ -178,7 +178,7 @@ class VGGNet(pl.LightningModule):
         self.val_epoch_loss[self.trainer.current_epoch] = avg_loss
 
         # Train accuracy average for this epoch
-        val_acc = self.train_accuracy.compute()
+        val_acc = self.val_accuracy.compute()
         self.val_epoch_acc[self.trainer.current_epoch] = val_acc.cpu().detach().numpy()
 
         # We only want to log on real training loop, not during vanity check
